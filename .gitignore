@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# General
+# ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# Editors / IDEs
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# ------------------------------------------------------------
+# Vivado / Vitis generated files
+# Keep source RTL, XDC, Tcl, and intentional project files.
+# Ignore tool-generated outputs and run products.
+# ------------------------------------------------------------
+**/.Xil/
+**/*.cache/
+**/*.gen/
+**/*.runs/
+**/*.sim/
+**/*.hw/
+**/*.ip_user_files/
+
+*.jou
+*.log
+*.str
+*.pb
+
+# Wave / debug / reports
+*.wdb
+*.wcfg
+*.ltx
+
+# Generated output products
+*.bit
+*.bin
+*.mcs
+*.prm
+*.mmi
+
+# Temporary / dump files
+*.tmp
+*.backup
+*.bgn
+*.dcp~
+
+# Common export artifacts you usually do not want tracked by default
+# Uncomment these if you decide not to version them
+# *.xsa
+# *.xpfm
+
+# ------------------------------------------------------------
+# PetaLinux generated files
+# Keep project-spec/, configs, patches, recipes, and scripts.
+# Ignore build outputs, images, and workspace junk.
+# ------------------------------------------------------------
+petalinux/**/.petalinux/
+petalinux/**/build/
+petalinux/**/images/linux/
+petalinux/**/pre-built/
+petalinux/**/components/plnx_workspace/
+petalinux/**/components/yocto/workspace/
+petalinux/**/components/yocto/layers/meta-petalinux/recipes-bsp/u-boot/files/system-top.dts.old
+petalinux/**/components/yocto/source/
+petalinux/**/components/yocto/downloads/
+petalinux/**/components/yocto/sstate-cache/
+
+# Boot/image artifacts
+*.wic
+*.wic.bz2
+*.tar.gz
+*.cpio
+*.cpio.gz
+*.rootfs.cpio.gz.u-boot
+*.ub
+*.ub.gz
+*.elf
+*.dtb
+u-boot.bin
+BOOT.BIN
+image.ub
+boot.scr
+
+# ------------------------------------------------------------
+# Simulation artifacts
+# ------------------------------------------------------------
+transcript
+vsim.wlf
+*.wlf
+*.vcd
+*.fst
+
+# ------------------------------------------------------------
+# OS / shell clutter
+# ------------------------------------------------------------
+*.pid
+*.out
+*.err

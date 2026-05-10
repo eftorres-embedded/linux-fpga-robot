@@ -778,7 +778,7 @@
  };
 / {
  board = "arty-z7-20";
- compatible = "xlnx,arty-z7-20";
+ compatible = "xlnx,arty-z7-20", "xlnx,zynq-7000";
  device_id = "7z020";
  slrcount = <1>;
  family = "Zynq";

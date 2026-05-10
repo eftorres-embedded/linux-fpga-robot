@@ -8,16 +8,26 @@ Purpose:
   Convert SDTGen's raw system DTS into a Linux/U-Boot-safe DTS.
 
 Fixes:
-  1. Ensure root compatible includes "xlnx,zynq-7000".
+  1. Ensure the root compatible includes:
+       "xlnx,arty-z7-20", "xlnx,zynq-7000"
+
   2. Rename QSPI linear flash node:
-       memory@fc000000 -> flash@fc000000
+       ps7_qspi_linear_0_memory: memory@fc000000
+     to:
+       ps7_qspi_linear_0_memory: flash@fc000000
      and remove device_type = "memory" from that node.
+
   3. Rename PS RAM / OCM nodes:
-       memory@0        -> sram@0
-       memory@ffff0000 -> sram@ffff0000
+       ps7_ram_0_memory: memory@0
+       ps7_ram_1_memory: memory@ffff0000
+     to:
+       ps7_ram_0_memory: sram@0
+       ps7_ram_1_memory: sram@ffff0000
      and remove device_type = "memory" from those nodes.
+
   4. Leave DDR as the only system memory node:
-       memory@00100000 with device_type = "memory".
+       ps7_ddr_0_memory: memory@00100000
+       device_type = "memory";
 
 This script intentionally does not modify vendor files under /opt/Xilinx.
 """
@@ -32,20 +42,31 @@ from pathlib import Path
 
 
 ROOT_COMPAT_OLD_RE = re.compile(
-    r'compatible\s*=\s*"xlnx,arty-z7-20"\s*;',
+    r'(?m)^([ \t]*)compatible\s*=\s*"xlnx,arty-z7-20"\s*;'
 )
 
-ROOT_COMPAT_NEW = (
-    'compatible = "xlnx,arty-z7-20", "xlnx,zynq-7000";'
+ROOT_COMPAT_NEW_RE = re.compile(
+    r'(?m)^[ \t]*compatible\s*=\s*"xlnx,arty-z7-20"\s*,\s*"xlnx,zynq-7000"\s*;'
 )
 
 
 def replace_root_compatible(text: str) -> tuple[str, bool]:
-    """Ensure root compatible has both board and Zynq family strings."""
-    if '"xlnx,zynq-7000"' in text:
+    """
+    Ensure the root node compatible has both board and Zynq family strings.
+
+    Important:
+      Do not simply search the whole file for "xlnx,zynq-7000".
+      That string can appear elsewhere while the root compatible is still wrong.
+    """
+    if ROOT_COMPAT_NEW_RE.search(text):
         return text, False
 
-    new_text, count = ROOT_COMPAT_OLD_RE.subn(ROOT_COMPAT_NEW, text, count=1)
+    new_text, count = ROOT_COMPAT_OLD_RE.subn(
+        r'\1compatible = "xlnx,arty-z7-20", "xlnx,zynq-7000";',
+        text,
+        count=1,
+    )
+
     if count != 1:
         raise RuntimeError(
             'Could not find root compatible = "xlnx,arty-z7-20";'
@@ -57,16 +78,38 @@ def replace_root_compatible(text: str) -> tuple[str, bool]:
 def find_matching_brace(text: str, open_brace_idx: int) -> int:
     """Find matching closing brace for a node block."""
     depth = 0
+
     for i in range(open_brace_idx, len(text)):
         char = text[i]
+
         if char == "{":
             depth += 1
         elif char == "}":
             depth -= 1
+
             if depth == 0:
                 return i
 
     raise RuntimeError("Could not find matching closing brace")
+
+
+def find_labeled_node(text: str, label: str) -> tuple[re.Match[str], int, int]:
+    """
+    Find a labeled DTS node and return:
+      match, open_brace_idx, close_brace_idx
+    """
+    pattern = re.compile(
+        rf'(?m)^([ \t]*{re.escape(label)}\s*:\s*)([A-Za-z0-9_,+.\-]+@[A-Fa-f0-9]+)(\s*\{{)'
+    )
+
+    match = pattern.search(text)
+    if not match:
+        raise RuntimeError(f'Could not find labeled node "{label}"')
+
+    open_brace_idx = text.find("{", match.start())
+    close_brace_idx = find_matching_brace(text, open_brace_idx)
+
+    return match, open_brace_idx, close_brace_idx
 
 
 def patch_node(
@@ -79,33 +122,36 @@ def patch_node(
     """
     Rename a labeled node and optionally remove device_type = "memory"
     from only that node block.
+
+    This is intentionally idempotent:
+      - If the node was already renamed, it keeps the new name.
+      - If device_type = "memory" was already removed, it does not fail.
     """
-    pattern = re.compile(
-        rf'({re.escape(label)}\s*:\s*){re.escape(old_unit_name)}(\s*\{{)'
-    )
-
-    match = pattern.search(text)
-    if not match:
-        # Already patched?
-        already = re.search(
-            rf'{re.escape(label)}\s*:\s*{re.escape(new_unit_name)}\s*\{{',
-            text,
-        )
-        if already:
-            return text, False
-
-        raise RuntimeError(
-            f"Could not find node '{label}: {old_unit_name}'"
-        )
-
-    open_brace_idx = text.find("{", match.start())
-    close_brace_idx = find_matching_brace(text, open_brace_idx)
+    match, _open_brace_idx, close_brace_idx = find_labeled_node(text, label)
 
     before = text[: match.start()]
     node = text[match.start() : close_brace_idx + 1]
     after = text[close_brace_idx + 1 :]
 
-    node = pattern.sub(rf"\1{new_unit_name}\2", node, count=1)
+    changed = False
+
+    current_unit_name = match.group(2)
+
+    if current_unit_name == old_unit_name:
+        node = re.sub(
+            rf'({re.escape(label)}\s*:\s*){re.escape(old_unit_name)}(\s*\{{)',
+            rf'\1{new_unit_name}\2',
+            node,
+            count=1,
+        )
+        changed = True
+    elif current_unit_name == new_unit_name:
+        pass
+    else:
+        raise RuntimeError(
+            f'Node "{label}" has unexpected unit name "{current_unit_name}". '
+            f'Expected "{old_unit_name}" or "{new_unit_name}".'
+        )
 
     if remove_memory_device_type:
         node, removed = re.subn(
@@ -114,18 +160,22 @@ def patch_node(
             node,
             count=1,
         )
-        if removed != 1:
-            raise RuntimeError(
-                f'Node "{label}" did not contain device_type = "memory";'
-            )
 
-    return before + node + after, True
+        if removed:
+            changed = True
+
+    return before + node + after, changed
 
 
 def validate_text(text: str) -> None:
     """Basic text-level validation before writing."""
+    if not ROOT_COMPAT_NEW_RE.search(text):
+        raise RuntimeError(
+            'Validation failed: root compatible must be '
+            '"xlnx,arty-z7-20", "xlnx,zynq-7000";'
+        )
+
     required = [
-        '"xlnx,zynq-7000"',
         "ps7_qspi_linear_0_memory: flash@fc000000",
         "ps7_ram_0_memory: sram@0",
         "ps7_ram_1_memory: sram@ffff0000",
@@ -136,7 +186,6 @@ def validate_text(text: str) -> None:
         if token not in text:
             raise RuntimeError(f"Validation failed: missing {token}")
 
-    # Ensure the known bad labels are no longer memory@ nodes.
     forbidden = [
         "ps7_qspi_linear_0_memory: memory@fc000000",
         "ps7_ram_0_memory: memory@0",
@@ -169,7 +218,6 @@ def main() -> int:
         return 1
 
     original = dts_path.read_text()
-
     text = original
 
     text, changed_root = replace_root_compatible(text)

@@ -242,7 +242,18 @@
    clock-names = "pclk", "hclk", "tx_clk";
    #address-cells = <1>;
    #size-cells = <0>;
-  };
+  
+                        phy-handle = <&ethernet_phy0>;
+
+                        mdio {
+                                #address-cells = <0x01>;
+                                #size-cells = <0x00>;
+
+                                ethernet_phy0: ethernet-phy@0 {
+                                        reg = <0x00>;
+                                };
+                        };
+};
   gem1: ethernet@e000c000 {
    compatible = "xlnx,zynq-gem", "cdns,gem";
    reg = <0xe000c000 0x1000>;
